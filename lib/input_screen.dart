@@ -1,63 +1,64 @@
+import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter/material.dart';
 
+import 'prediction_result_screen.dart';
 import 'prediction_service.dart';
-import 'result_screen.dart';
 
 class InputScreen extends StatefulWidget {
-  const InputScreen({super.key});
+  const InputScreen({Key? key}) : super(key: key);
 
   @override
-  State<InputScreen> createState() => _InputScreenState();
+  _InputScreenState createState() => _InputScreenState();
 }
 
 class _InputScreenState extends State<InputScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _predictionService = PredictionService();
-
+  final PredictionService _predictionService = PredictionService();
   bool _isLoading = false;
 
-  // Text field controllers
-  final _loanAmountController = TextEditingController();
-  final _loanIntRateController = TextEditingController();
-  final _personAgeController = TextEditingController();
-  final _personEmpLengthController = TextEditingController();
-  final _personIncomeController = TextEditingController();
+  // Form fields
+  String? _ageBand;
+  String? _band;
+  String? _binaryFlag;
+  String? _grade;
+  String? _purpose;
+  String? _residence;
+  String? _sizeBand;
+  double? _loanAmount;
+  double? _loanInterestRate;
+  int? _personAge;
+  int? _personEmpLength;
+  double? _personIncome;
 
-  // Enum values
-  String? _ageBand = '26-35';
-  String? _band = 'middle';
-  String? _binaryFlag = 'Y';
-  String? _grade = 'B';
-  String? _purpose = 'PERSONAL';
-  String? _residence = 'RENT';
-  String? _sizeBand = 'medium';
+  final List<String> _ageBands = ['20-25', '26-35', '36-45', '46-55', '56-65'];
+  final List<String> _bands = [
+    'high',
+    'high-middle',
+    'middle',
+    'low-middle',
+    'low',
+  ];
+  final List<String> _binaryFlags = ['Y', 'N'];
+  final List<String> _grades = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+  final List<String> _purposes = [
+    'DEBTCONSOLIDATION',
+    'EDUCATION',
+    'HOMEIMPROVEMENT',
+    'MEDICAL',
+    'PERSONAL',
+    'VENTURE',
+  ];
+  final List<String> _residences = ['MORTGAGE', 'RENT', 'OWN', 'OTHER'];
+  final List<String> _sizeBands = ['small', 'medium', 'large', 'very large'];
 
-  @override
-  void dispose() {
-    _loanAmountController.dispose();
-    _loanIntRateController.dispose();
-    _personAgeController.dispose();
-    _personEmpLengthController.dispose();
-    _personIncomeController.dispose();
-    super.dispose();
-  }
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
 
-  Future<void> _submitPrediction() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
+    _formKey.currentState!.save();
+    setState(() => _isLoading = true);
 
     try {
-      final data = {
-        'loan_amnt': double.parse(_loanAmountController.text),
-        'loan_int_rate': double.parse(_loanIntRateController.text),
-        'person_age': int.parse(_personAgeController.text),
-        'person_emp_length': int.parse(_personEmpLengthController.text),
-        'person_income': double.parse(_personIncomeController.text),
+      final result = await _predictionService.makePrediction({
         'Age_band': _ageBand,
         'Band': _band,
         'Binary_flag': _binaryFlag,
@@ -65,17 +66,20 @@ class _InputScreenState extends State<InputScreen> {
         'Purpose': _purpose,
         'Residence': _residence,
         'Size_band': _sizeBand,
-      };
-
-      final result = await _predictionService.predict(data);
+        'loan_amnt': _loanAmount,
+        'loan_int_rate': _loanInterestRate,
+        'person_age': _personAge,
+        'person_emp_length': _personEmpLength,
+        'person_income': _personIncome,
+      });
 
       if (mounted) {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ResultScreen(
-              prediction: result['prediction'] ?? 'N/A',
-              score: result['score'] ?? 0.0,
+            builder: (context) => PredictionResultScreen(
+              prediction: result['prediction'] as String,
+              score: result['score'] as double,
             ),
           ),
         );
@@ -84,316 +88,210 @@ class _InputScreenState extends State<InputScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
+  }
+
+  Widget _buildDropdown(
+    String label,
+    List<String> items,
+    String? value,
+    Function(String?) onChanged,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: DropdownButtonFormField2<String>(
+        decoration: InputDecoration(
+          labelText: label,
+          border: OutlineInputBorder(),
+        ),
+        isExpanded: true,
+        value: value,
+        items: items.map((String item) {
+          return DropdownMenuItem<String>(value: item, child: Text(item));
+        }).toList(),
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return 'Please select a value';
+          }
+          return null;
+        },
+        onChanged: onChanged,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Loan Prediction'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: const Text('Loan Prediction Input'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            onPressed: () => Navigator.pushNamed(context, '/history'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await _predictionService.clearToken();
+              if (mounted) {
+                Navigator.of(
+                  context,
+                ).pushNamedAndRemoveUntil('/auth', (route) => false);
+              }
+            },
+          ),
+        ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  // Numeric fields
-                  TextFormField(
-                    controller: _loanAmountController,
-                    decoration: const InputDecoration(
-                      labelText: 'Loan Amount',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter loan amount';
-                      }
-                      if (double.tryParse(value) == null) {
-                        return 'Please enter a valid number';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  TextFormField(
-                    controller: _loanIntRateController,
-                    decoration: const InputDecoration(
-                      labelText: 'Loan Interest Rate',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter interest rate';
-                      }
-                      if (double.tryParse(value) == null) {
-                        return 'Please enter a valid number';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  TextFormField(
-                    controller: _personAgeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Person Age',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter age';
-                      }
-                      if (int.tryParse(value) == null) {
-                        return 'Please enter a valid number';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  TextFormField(
-                    controller: _personEmpLengthController,
-                    decoration: const InputDecoration(
-                      labelText: 'Employment Length',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter employment length';
-                      }
-                      if (int.tryParse(value) == null) {
-                        return 'Please enter a valid number';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  TextFormField(
-                    controller: _personIncomeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Person Income',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter income';
-                      }
-                      if (double.tryParse(value) == null) {
-                        return 'Please enter a valid number';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Dropdown fields
-                  DropdownButtonFormField<String>(
-                    value: _ageBand,
-                    decoration: const InputDecoration(
-                      labelText: 'Age Band',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: '20-25', child: Text('20-25')),
-                      DropdownMenuItem(value: '26-35', child: Text('26-35')),
-                      DropdownMenuItem(value: '36-45', child: Text('36-45')),
-                      DropdownMenuItem(value: '46-55', child: Text('46-55')),
-                      DropdownMenuItem(value: '56-65', child: Text('56-65')),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _ageBand = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  DropdownButtonFormField<String>(
-                    value: _band,
-                    decoration: const InputDecoration(
-                      labelText: 'Band',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'high', child: Text('High')),
-                      DropdownMenuItem(
-                        value: 'high-middle',
-                        child: Text('High-Middle'),
-                      ),
-                      DropdownMenuItem(value: 'middle', child: Text('Middle')),
-                      DropdownMenuItem(
-                        value: 'low-middle',
-                        child: Text('Low-Middle'),
-                      ),
-                      DropdownMenuItem(value: 'low', child: Text('Low')),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _band = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  DropdownButtonFormField<String>(
-                    value: _binaryFlag,
-                    decoration: const InputDecoration(
-                      labelText: 'Binary Flag',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'Y', child: Text('Yes')),
-                      DropdownMenuItem(value: 'N', child: Text('No')),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _binaryFlag = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  DropdownButtonFormField<String>(
-                    value: _grade,
-                    decoration: const InputDecoration(
-                      labelText: 'Grade',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'A', child: Text('A')),
-                      DropdownMenuItem(value: 'B', child: Text('B')),
-                      DropdownMenuItem(value: 'C', child: Text('C')),
-                      DropdownMenuItem(value: 'D', child: Text('D')),
-                      DropdownMenuItem(value: 'E', child: Text('E')),
-                      DropdownMenuItem(value: 'F', child: Text('F')),
-                      DropdownMenuItem(value: 'G', child: Text('G')),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _grade = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  DropdownButtonFormField<String>(
-                    value: _purpose,
-                    decoration: const InputDecoration(
-                      labelText: 'Purpose',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'DEBTCONSOLIDATION',
-                        child: Text('Debt Consolidation'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'EDUCATION',
-                        child: Text('Education'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'HOMEIMPROVEMENT',
-                        child: Text('Home Improvement'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'MEDICAL',
-                        child: Text('Medical'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'PERSONAL',
-                        child: Text('Personal'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'VENTURE',
-                        child: Text('Venture'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _purpose = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  DropdownButtonFormField<String>(
-                    value: _residence,
-                    decoration: const InputDecoration(
-                      labelText: 'Residence',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'MORTGAGE',
-                        child: Text('Mortgage'),
-                      ),
-                      DropdownMenuItem(value: 'RENT', child: Text('Rent')),
-                      DropdownMenuItem(value: 'OWN', child: Text('Own')),
-                      DropdownMenuItem(value: 'OTHER', child: Text('Other')),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _residence = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  DropdownButtonFormField<String>(
-                    value: _sizeBand,
-                    decoration: const InputDecoration(
-                      labelText: 'Size Band',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'small', child: Text('Small')),
-                      DropdownMenuItem(value: 'medium', child: Text('Medium')),
-                      DropdownMenuItem(value: 'large', child: Text('Large')),
-                      DropdownMenuItem(
-                        value: 'very large',
-                        child: Text('Very Large'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _sizeBand = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 24),
-
-                  ElevatedButton(
-                    onPressed: _submitPrediction,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.all(16),
-                    ),
-                    child: const Text(
-                      'Get Prediction',
-                      style: TextStyle(fontSize: 18),
-                    ),
-                  ),
-                ],
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              _buildDropdown(
+                'Age Band',
+                _ageBands,
+                _ageBand,
+                (val) => setState(() => _ageBand = val),
               ),
-            ),
+              _buildDropdown(
+                'Band',
+                _bands,
+                _band,
+                (val) => setState(() => _band = val),
+              ),
+              _buildDropdown(
+                'Binary Flag',
+                _binaryFlags,
+                _binaryFlag,
+                (val) => setState(() => _binaryFlag = val),
+              ),
+              _buildDropdown(
+                'Grade',
+                _grades,
+                _grade,
+                (val) => setState(() => _grade = val),
+              ),
+              _buildDropdown(
+                'Purpose',
+                _purposes,
+                _purpose,
+                (val) => setState(() => _purpose = val),
+              ),
+              _buildDropdown(
+                'Residence',
+                _residences,
+                _residence,
+                (val) => setState(() => _residence = val),
+              ),
+              _buildDropdown(
+                'Size Band',
+                _sizeBands,
+                _sizeBand,
+                (val) => setState(() => _sizeBand = val),
+              ),
+
+              TextFormField(
+                decoration: const InputDecoration(
+                  labelText: 'Loan Amount',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Required';
+                  if (double.tryParse(value) == null)
+                    return 'Enter a valid number';
+                  return null;
+                },
+                onSaved: (value) => _loanAmount = double.parse(value!),
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                decoration: const InputDecoration(
+                  labelText: 'Loan Interest Rate',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Required';
+                  if (double.tryParse(value) == null)
+                    return 'Enter a valid number';
+                  return null;
+                },
+                onSaved: (value) => _loanInterestRate = double.parse(value!),
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                decoration: const InputDecoration(
+                  labelText: 'Age',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Required';
+                  if (int.tryParse(value) == null)
+                    return 'Enter a valid number';
+                  return null;
+                },
+                onSaved: (value) => _personAge = int.parse(value!),
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                decoration: const InputDecoration(
+                  labelText: 'Employment Length (years)',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Required';
+                  if (int.tryParse(value) == null)
+                    return 'Enter a valid number';
+                  return null;
+                },
+                onSaved: (value) => _personEmpLength = int.parse(value!),
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                decoration: const InputDecoration(
+                  labelText: 'Annual Income',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Required';
+                  if (double.tryParse(value) == null)
+                    return 'Enter a valid number';
+                  return null;
+                },
+                onSaved: (value) => _personIncome = double.parse(value!),
+              ),
+              const SizedBox(height: 24),
+
+              if (_isLoading)
+                const CircularProgressIndicator()
+              else
+                ElevatedButton(
+                  onPressed: _submit,
+                  child: const Text('Submit'),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 50),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
